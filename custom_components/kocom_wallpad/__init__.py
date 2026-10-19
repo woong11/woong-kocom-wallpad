@@ -7,6 +7,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.const import CONF_HOST, CONF_PORT, EVENT_HOMEASSISTANT_STOP
 
+from homeassistant.helpers import device_registry as dr
+
 from .const import DOMAIN, PLATFORMS
 from .gateway import KocomGateway
 
@@ -14,7 +16,7 @@ from .gateway import KocomGateway
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Kocom Wallpad from a config entry."""
     host: str = entry.data[CONF_HOST]
-    port: int = entry.data[CONF_PORT]
+    port: int | None = entry.data[CONF_PORT]
 
     gateway = KocomGateway(hass, entry, host=host, port=port)
     try:
@@ -29,6 +31,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = gateway
     try:
+        gateway.device_id = dr.async_get(hass).async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={(DOMAIN, host)},
+            manufacturer="KOCOM Co., Ltd",
+            name="Kocom Gateway",
+            model="Serial gateway" if port is None else "TCP gateway",
+        ).id
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except BaseException:
         try:

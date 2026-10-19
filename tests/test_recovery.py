@@ -11,6 +11,35 @@ from kocom_test.models import DeviceKey
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_packet_metadata_both_directions(self):
+        from kocom_test.controller import PacketFrame
+        raw = packet(0x36, (0x10, 0, 24, 0, 22), room=4)
+        frame = PacketFrame(raw)
+        self.assertEqual((frame.dev_type, frame.dev_room), (DeviceType.THERMOSTAT, 4))
+        swapped = bytearray(raw)
+        swapped[5:9] = raw[7:9] + raw[5:7]
+        swapped[18] = sum(swapped[2:18]) % 256
+        reverse = PacketFrame(bytes(swapped))
+        self.assertEqual((reverse.dev_type, reverse.dev_room, reverse.payload),
+                         (frame.dev_type, frame.dev_room, frame.payload))
+
+    def test_undiscovered_off_channels_emit_no_updates(self):
+        g = gateway()
+        with patch('kocom_test.gateway.async_dispatcher_send') as send:
+            g.controller.feed(packet(payload=(0,) * 8))
+        send.assert_not_called()
+        self.assertEqual(len(g.registry._states), 0)
+
+    def test_identical_packets_still_confirm_commands(self):
+        g = gateway()
+        raw = packet()
+        g.controller.feed(raw)
+        with patch.object(g, '_notify_pendings') as notify, patch(
+                'kocom_test.gateway.async_dispatcher_send') as send:
+            g.controller.feed(raw)
+        self.assertTrue(notify.called)
+        send.assert_not_called()
+
     def test_every_frame_split_and_bytewise(self):
         raw = packet()
         for split in range(1, len(raw)):
@@ -92,6 +121,19 @@ class ProtocolTests(unittest.TestCase):
 
 
 class AsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_receive_timeout_and_external_cancellation(self):
+        conn = AsyncConnection('unused', 1)
+        conn._connected = True
+        conn._reader = asyncio.StreamReader()
+        self.assertEqual(await conn.recv(21, .001), b'')
+        task = asyncio.create_task(conn.recv(21))
+        await asyncio.sleep(0)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        conn._reader.feed_data(b'next')
+        self.assertEqual(await conn.recv(4), b'next')
+
     async def asyncSetUp(self):
         self.writers = []
         self.servers = []

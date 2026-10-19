@@ -121,6 +121,7 @@ class KocomGateway:
         self.entry = entry
         self.host = host
         self.port = port
+        self.device_id: str | None = None
         self.conn = AsyncConnection(host=host, port=port)
         self.controller = KocomController(self)
         self.registry = EntityRegistry()
@@ -275,6 +276,10 @@ class KocomGateway:
             self._notify_pendings(dev)
             return
 
+        if not allow_insert and self.registry.get(dev.key) is None:
+            # OFF channels never discovered as entities have no subscribers.
+            self._notify_pendings(dev)
+            return
         if changed or became_live:
             LOGGER.debug("Device state has been changed. Update -> %s", dev.key)
             async_dispatcher_send(
@@ -359,7 +364,10 @@ class KocomGateway:
                 return False
             t0 = time.monotonic()
             while not self.is_idle() and time.monotonic() - t0 < 1.0:
-                await asyncio.sleep(0.02)
+                # Sleep until the current idle deadline, then recheck new traffic.
+                remaining = min(IDLE_GAP_SEC - self.conn.idle_since(),
+                                1.0 - (time.monotonic() - t0))
+                await asyncio.sleep(max(0, remaining))
                 if item.future.done() or generation != self.conn.generation:
                     return False
             # Preserve upstream timing until actual RS485 bus timings are known.

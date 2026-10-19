@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from typing import List, Callable, Any, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
+import logging
 
 from homeassistant.const import Platform, UnitOfTemperature
 from homeassistant.components.sensor import SensorDeviceClass
@@ -44,56 +45,31 @@ REV_AC_FAN_MAP = {v: k for k, v in AIRCONDITIONER_FAN_MAP.items()}
 REV_VENT_PRESET_MAP = {v: k for k, v in VENTILATION_PRESET_MAP.items()}
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class PacketFrame:
     """Packet frame."""
     raw: bytes
 
-    @property
-    def packet_type(self) -> int:
-        return (self.raw[3] >> 4) & 0x0F
+    packet_type: int = field(init=False)
+    command: int = field(init=False)
+    payload: bytes = field(init=False)
+    checksum: int = field(init=False)
+    dev_type: DeviceType = field(init=False)
+    dev_room: int = field(init=False)
 
-    @property
-    def dest(self) -> bytes:
-        return self.raw[5:7]
-
-    @property
-    def src(self) -> bytes:
-        return self.raw[7:9]
-
-    @property
-    def command(self) -> int:
-        return self.raw[9]
-
-    @property
-    def payload(self) -> bytes:
-        return self.raw[10:18]
-
-    @property
-    def checksum(self) -> int:
-        return self.raw[18]
-
-    @property
-    def peer(self) -> tuple[int, int]:
-        if self.dest[0] == 0x01:
-            return (self.src[0], self.src[1])
-        elif self.src[0] == 0x01:
-            return (self.dest[0], self.dest[1])
+    def __post_init__(self) -> None:
+        raw = self.raw
+        self.packet_type = (raw[3] >> 4) & 0x0F
+        self.command = raw[9]
+        self.payload = raw[10:18]
+        self.checksum = raw[18]
+        if raw[5] == 0x01:
+            code, self.dev_room = raw[7], raw[8]
+        elif raw[7] == 0x01:
+            code, self.dev_room = raw[5], raw[6]
         else:
-            LOGGER.warning("Peer resolution failed: dest=%s, src=%s", self.dest.hex(), self.src.hex())
-            return (0, 0)
-
-    @property
-    def dev_type(self) -> DeviceType:
-        dev_type = DEVICE_TYPE_MAP.get(self.peer[0], None)
-        if dev_type is None:
-            LOGGER.debug("Unknown device type code=%s, raw=%s", hex(self.peer[0]), self.raw.hex())
-            dev_type = DeviceType.UNKNOWN
-        return dev_type
-
-    @property
-    def dev_room(self) -> int:
-        return self.peer[1]
+            code, self.dev_room = 0, 0
+        self.dev_type = DEVICE_TYPE_MAP.get(code, DeviceType.UNKNOWN)
 
 
 class KocomController:
@@ -115,7 +91,8 @@ class KocomController:
             return
         self._rx_buf.extend(chunk)
         for pkt in self._split_buf():
-            LOGGER.debug("Packet received: raw=%s", pkt.hex())
+            if LOGGER.isEnabledFor(logging.DEBUG):
+                LOGGER.debug("Packet received: raw=%s", pkt.hex())
             try:
                 self._dispatch_packet(pkt)
             except Exception:
@@ -187,7 +164,8 @@ class KocomController:
         elif frame.dev_type == DeviceType.AIRQUALITY:
             dev_state = self._handle_airquality(frame)
         else:
-            LOGGER.debug("Unhandled device type: %s (raw=%s)", frame.dev_type.name, frame.raw.hex())
+            if LOGGER.isEnabledFor(logging.DEBUG):
+                LOGGER.debug("Unhandled device type: %s (raw=%s)", frame.dev_type.name, frame.raw.hex())
             return
 
         if not dev_state:

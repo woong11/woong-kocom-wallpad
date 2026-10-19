@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import socket
 import time
 
-import serial_asyncio
+import serialx
 
 from .const import LOGGER
 
@@ -33,7 +33,7 @@ class AsyncConnection:
         if self._writer is not None:
             raise RuntimeError("Close the previous connection before opening")
         if self.port is None:
-            operation = serial_asyncio.open_serial_connection(
+            operation = serialx.open_serial_connection(
                 url=self.host, baudrate=self.serial_baud
             )
         else:
@@ -114,7 +114,8 @@ class AsyncConnection:
         if not self._connected or reader is None:
             raise ConnectionError("Connection is not ready")
         try:
-            chunk = await asyncio.wait_for(reader.read(nbytes), timeout)
+            async with asyncio.timeout(timeout):
+                chunk = await reader.read(nbytes)
         except asyncio.TimeoutError:
             return b""  # Quiet bus is not a disconnected bus.
         if not chunk:

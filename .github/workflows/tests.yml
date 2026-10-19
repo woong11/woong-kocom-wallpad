@@ -21,10 +21,18 @@ jobs:
 
   ha-smoke:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - python: '3.13'
+            ha: '2025.2.2'
+          - python: '3.14'
+            ha: '2026.10.2'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
-      - run: pip install homeassistant==2025.2.2 pyserial-asyncio==0.6
+          python-version: ${{ matrix.python }}
+      - run: pip install homeassistant==${{ matrix.ha }} serialx==1.11.0
       - run: python scripts/ha_smoke.py
+      - run: python scripts/serial_smoke.py

@@ -9,7 +9,7 @@
     "iot_class": "local_push",
     "issue_tracker": "https://github.com/woong11/woong-kocom-wallpad/issues",
     "requirements": [
-        "pyserial-asyncio==0.6"
+        "serialx==1.11.0"
     ],
-    "version": "2.0.6"
+    "version": "2.0.7"
 }

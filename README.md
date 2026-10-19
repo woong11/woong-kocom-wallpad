@@ -1,7 +1,7 @@
 # Woong Kocom Wallpad — 연결 안정화 수정본
 
 [lunDreame/kocom-wallpad](https://github.com/lunDreame/kocom-wallpad) 2.0.5를 기반으로,
-사용 중 제어가 멈추고 통합 재시작으로만 복구되는 문제를 개선한 2.0.6 수정본입니다.
+사용 중 제어가 멈추고 통합 재시작으로만 복구되는 문제를 개선한 2.0.7 수정본입니다.
 원저자의 공식 릴리스는 아닙니다. 변경 사항은 [CHANGELOG.md](CHANGELOG.md)를 참고하세요.
 
 [HACS에서 저장소 열기](https://my.home-assistant.io/redirect/hacs_repository/?owner=woong11&repository=woong-kocom-wallpad&category=integration)
@@ -18,15 +18,27 @@ HACS 사용자 지정 저장소 유형은 **Integration(통합)** 입니다.
 3. 기존 원본과 수정본은 domain이 같으므로 동시에 설치하지 않습니다. HACS가 같은 domain 중복을 거부하면 원본을 HACS에서 제거한 다음 수정본을 등록·다운로드합니다.
 4. 이 과정에서 HA의 **설정 → 기기 및 서비스에 등록된 코콤 통합 항목은 삭제하지 않습니다.**
 5. 수정본 다운로드 후 **Home Assistant를 재시작**합니다. Python 파일을 교체한 뒤 통합 다시 로드만으로는 이전 모듈이 남을 수 있습니다.
-6. 통합 버전이 2.0.6인지 확인하고, 조명 ON/OFF와 벽 스위치의 상태 반영을 확인합니다.
+6. 통합 버전이 2.0.7인지 확인하고, 조명 ON/OFF와 벽 스위치의 상태 반영을 확인합니다.
 
 새 설치는 기기 및 서비스에서 코콤 월패드를 추가하고 EW11 IP와 TCP 포트(기본 8899)를 입력합니다.
 USB 시리얼 경로(`/dev/serial/by-id/...`)를 입력하면 포트 대신 9600bps 시리얼을 사용합니다.
 이 구성 화면은 기존 host 기반 식별자를 유지합니다. 동일 host의 여러 TCP 포트 구성은 아직 지원하지 않습니다.
 
 HACS의 최소 HA 버전 메타데이터는 원본의 2025.2.2를 유지합니다.
-HA 2025.2.2 / Python 3.13에서 8개 엔티티 등록·상태 갱신·unavailable 전환·정리를 검증했습니다.
+HA 2025.2.2 / Python 3.13 및 HA 2026.10.2 / Python 3.14에서 8개 엔티티 등록·상태 갱신·unavailable 전환·정리를 검증했습니다.
 실제 월패드·USB 시리얼 하드웨어와 모든 HA 버전에서 검증한 것은 아닙니다.
+
+## 2.0.7 호환성과 성능 개선
+
+- 시리얼 통신 의존성을 `serialx==1.11.0`으로 변경했습니다. HA 2026.10.2가 사용하는 버전에 맞춰 의존성 충돌 위험을 줄였습니다.
+- 최신 HA에서는 게이트웨이 기기를 먼저 등록하고 `via_device_id`로 연결합니다. 구형 HA에는 기존 API를 사용합니다.
+- 패킷 필드를 한 번만 해석하고, 데이터 객체에 slots를 적용하며, 미등록 OFF 채널의 불필요한 알림과 전체 복원 캐시의 중복 저장을 줄였습니다.
+- 수신 타임아웃은 `asyncio.timeout`으로 명시합니다. Python 3.12 이상에서 기존 wait_for도 내부적으로 같은 방식을 사용하므로 이 변경에 별도 성능 향상 수치를 부여하지 않습니다.
+- 전체 점검 결과, 측정 방법과 보류한 변경은 [PERFORMANCE.md](PERFORMANCE.md)에 기록했습니다.
+- 기존 엔티티 unique_id, 기기 식별자, 영역 설정은 유지합니다. 기기 목록에 Kocom Gateway가 추가될 수 있습니다.
+- 실제 serialx와 Linux 가상 시리얼 포트로 송수신·무수신 타임아웃·종료·재접속을 검증합니다.
+- EW11 TCP는 asyncio의 TCP 경로를 유지합니다. 실물 환경에서 응답 속도 향상률은 측정하지 않았습니다.
+- 기존 코콤 애드온이 설치되어 있으면 실행 여부를 확인하세요. 같은 EW11에 접속하는 다른 프로그램이 있는지는 설치 목록만으로 판단할 수 없습니다.
 
 ## 동작상의 차이
 
@@ -69,8 +81,9 @@ EOF/자동 재연결은 로컬 TCP 서버로 검증합니다. 별도로 실제 H
 
 ```bash
 # Python 3.13 별도 가상환경
-pip install homeassistant==2025.2.2 pyserial-asyncio==0.6
+pip install homeassistant==2025.2.2 serialx==1.11.0
 python scripts/ha_smoke.py
+python scripts/serial_smoke.py
 ```
 
 이 검증도 전체 HA config-entry 로딩/HACS 설치/실물 RS485 시험을 대체하지 않습니다.

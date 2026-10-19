@@ -41,7 +41,7 @@ module('homeassistant.components.climate')
 module('homeassistant.components.climate.const', HVACMode=HVACMode,
        PRESET_NONE='none', PRESET_AWAY='away', FAN_LOW='low', FAN_MEDIUM='medium',
        FAN_HIGH='high', FAN_AUTO='auto')
-module('serial_asyncio')
+module('serialx')
 package = module('kocom_test')
 package.__path__ = [str(ROOT)]
 for name in ('const', 'models', 'transport', 'controller', 'gateway'):

@@ -52,9 +52,14 @@ class KocomBaseEntity(RestoreEntity):
             manufacturer="KOCOM Co., Ltd",
             model="Smart Wallpad",
             name=f"{self.format_identifiers}",
-            via_device=(DOMAIN, str(self.gateway.host)),
         )
-        
+        if gateway.device_id is not None:
+            if "via_device_id" in DeviceInfo.__annotations__:
+                self._attr_device_info["via_device_id"] = gateway.device_id
+            else:
+                # Compatibility with HA releases before the registry API change.
+                self._attr_device_info["via_device"] = (DOMAIN, str(gateway.host))
+
     @property
     def format_key(self) -> str:
         if self._device.key.sub_type == SubType.NONE:
@@ -112,7 +117,16 @@ class KocomBaseEntity(RestoreEntity):
 
     @property
     def extra_restore_state_data(self) -> RestoredExtraData:
+        key = self._device.key
+        # Persist only this physical device's hints, not the whole gateway cache
+        # on every entity. Existing global restore dictionaries remain readable.
+        prefix = f"{key.device_type.value}-{key.room_index}_{key.device_index}-0_"
+        storage = self.gateway.controller._device_storage
+        hints = {name: list(value) if isinstance(value, list) else value
+                 for name, value in storage.items() if name.startswith(prefix)}
+        if key.device_type == DeviceType.ELEVATOR and "available_floor" in storage:
+            hints["available_floor"] = storage["available_floor"]
         return RestoredExtraData({
-            "packet": getattr(self._device, "_packet", bytes()).hex(),
-            "device_storage": self.gateway.controller._device_storage
+            "packet": self._device._packet.hex(),
+            "device_storage": hints,
         })

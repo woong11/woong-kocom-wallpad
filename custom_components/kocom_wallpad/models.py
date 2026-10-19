@@ -60,7 +60,7 @@ ELEVATOR_DIRECTION_MAP = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DeviceKey:
     """Device key."""
     device_type: DeviceType
@@ -77,10 +77,13 @@ class DeviceKey:
         return (self.device_type.value, self.room_index, self.device_index, self.sub_type.value)
 
 
-@dataclass
+@dataclass(slots=True)
 class DeviceState:
     """Device state."""
     key: DeviceKey
     platform: Platform
     attribute: dict[str, Any] 
     state: Union[dict[str, Any], bool, int, float, str]
+
+    _packet: bytes = b""
+    _is_register: bool = True
