@@ -1,0 +1,15 @@
+{
+    "domain": "kocom_wallpad",
+    "name": "Kocom Wallpad",
+    "codeowners": [
+        "@woong11"
+    ],
+    "config_flow": true,
+    "documentation": "https://github.com/woong11/woong-kocom-wallpad",
+    "iot_class": "local_push",
+    "issue_tracker": "https://github.com/woong11/woong-kocom-wallpad/issues",
+    "requirements": [
+        "pyserial-asyncio==0.6"
+    ],
+    "version": "2.0.6"
+}
