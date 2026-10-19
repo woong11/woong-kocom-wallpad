@@ -2,7 +2,7 @@
 
 ## 2.0.7 — HA 최신 API 및 통신 라이브러리 전환
 
-- pyserial-asyncio 의존성을 HA 2026.10.2와 같은 serialx 1.11.0으로 교체.
+- pyserial-asyncio 의존성을 serialx>=1.11.0으로 교체. HA 자체 의존성 업데이트를 허용.
 - 게이트웨이 기기를 먼저 등록하고 최신 HA에서 via_device_id 사용. 구형 HA API 호환 유지.
 - 수신 경로의 타임아웃 범위를 asyncio.timeout으로 명시. 최신 Python에서 Task 생성 감소 효과는 주장하지 않음.
 - 패킷 필드 일회 해석, dataclass slots, DEBUG 비활성 시 hex 변환 생략.

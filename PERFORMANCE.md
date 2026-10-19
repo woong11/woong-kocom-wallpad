@@ -9,7 +9,7 @@ HA가 제공하는 API/voluptuous다. 라이브러리 버전 변경뿐 아니라
 
 | 영역 / 라이브러리 | 판단 및 반영 |
 | --- | --- |
-| pyserial-asyncio | serialx 1.11.0으로 변경. 사용 중인 HA 2026.10.2와 버전을 맞춤. 실제 가상 시리얼 포트 검증 |
+| pyserial-asyncio | serialx>=1.11.0으로 변경. HA 2026.10.2의 1.11.0을 최소 조건으로 두고 이후 HA 업데이트를 허용. 실제 가상 시리얼 포트 검증 |
 | asyncio TCP | 기존 StreamReader/Writer 유지. 시리얼 라이브러리 변경은 EW11 TCP 경로를 가속하지 않음 |
 | asyncio timeout | 수신 범위를 명시. Python 3.12+ wait_for도 timeout을 사용하므로 Task 제거에 따른 성능 향상은 주장하지 않음 |
 | asyncio 송신 대기 | 20ms마다 확인하던 유휴 대기를 남은 유휴 시간에 맞춤. 200ms 유휴 조건과 1초 대기 한계 유지 |
