@@ -178,6 +178,72 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(g.stats['reconnections'], 1)
         self.assertFalse(g._task_reader.done())
 
+    async def test_quiet_reconnect_restores_availability_and_queries_before_control(self):
+        received = []
+        async def peer(reader, writer):
+            self.writers.append(writer)
+            if len(self.writers) == 1:
+                writer.write(packet(payload=(255, 0)))
+                await writer.drain()
+            try:
+                while True:
+                    raw = await reader.readexactly(21)
+                    received.append(raw)
+                    if raw[9] == 0x3A:
+                        # Another channel changed while HA was disconnected.
+                        writer.write(packet(payload=(255, 255)))
+                    else:
+                        writer.write(packet(payload=raw[10:18]))
+                    await writer.drain()
+            except (asyncio.IncompleteReadError, ConnectionError):
+                pass
+        g = await self.connect(peer)
+        await self.until(lambda: g.is_available(key()))
+        generation = g.conn.generation
+        self.writers[0].close()
+        await self.until(lambda: g.conn.generation > generation and g.is_available(key()))
+        self.assertNotIn(key().key, g._live_keys)
+        self.assertEqual(g.controller._switch_payloads, {})
+        self.assertTrue(await g.async_send_action(key(), 'turn_off'))
+        self.assertEqual([raw[9] for raw in received], [0x3A, 0])
+        self.assertEqual(received[0][5:10], bytes((0x0E, 1, 1, 0, 0x3A)))
+        self.assertEqual(received[1][10:12], bytes((0, 255)))
+        self.assertEqual(g.stats['state_queries'], 1)
+
+    async def test_state_query_timeout_is_bounded_and_sends_no_control(self):
+        g = gateway(); self.gateways.append(g)
+        g._stopping = False; g.conn._connected = True
+        g.controller.feed(packet())
+        g.controller._switch_payloads.clear()
+        g.is_idle = lambda: True
+        sent = []
+        async def send(raw):
+            sent.append(raw)
+            return len(raw)
+        g.conn.send = send
+        with patch('kocom_test.gateway.asyncio.wait_for', side_effect=asyncio.TimeoutError):
+            self.assertFalse(await g._execute(_CmdItem(key(), 'turn_off', {})))
+        self.assertEqual([raw[9] for raw in sent], [0x3A] * 3)
+        self.assertEqual(g._pendings, [])
+        self.assertFalse(g.conn._is_connected())
+
+    async def test_query_failure_never_sends_control_from_stale_state(self):
+        g = gateway(); self.gateways.append(g)
+        g._stopping = False; g.conn._connected = True
+        g.controller.feed(packet())
+        g.controller._switch_payloads.clear()
+        g.is_idle = lambda: True
+        sent = []
+        async def send(raw):
+            sent.append(raw)
+            # A disconnect wakes the state waiter but is not a valid snapshot.
+            g._connection_lost(g.conn.generation)
+            return len(raw)
+        g.conn.send = send
+        self.assertFalse(await g._execute(_CmdItem(key(), 'turn_off', {})))
+        self.assertEqual([raw[9] for raw in sent], [0x3A])
+        self.assertEqual(g._pendings, [])
+
     async def test_quiet_bus_not_reconnected(self):
         async def peer(reader, writer):
             self.writers.append(writer)
@@ -255,7 +321,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         g._stopping = False; g.conn._connected = True
         g._task_reader = asyncio.create_task(asyncio.sleep(100))
         g._task_sender = asyncio.create_task(asyncio.sleep(100))
-        g._live_keys.add(key().key)
+        g.controller.feed(packet())
         for _ in range(32): g._tx_queue.put_nowait(_CmdItem(key(), 'turn_on', {}))
         with self.assertRaisesRegex(HomeAssistantError, 'full'):
             await g.async_send_action(key(), 'turn_on')

@@ -14,7 +14,7 @@ HACS는 릴리스가 없어도 기본 브랜치에서 설치할 수 있습니다
    Python이 없다면 `custom_components/kocom_wallpad/manifest.json`의 `documentation`, `issue_tracker`, `codeowners` 3개 값을 직접 수정할 수 있습니다. 원저자 표시는 README에 남아 있습니다.
 
 4. 변경 사항을 기본 브랜치에 커밋·푸시합니다. 원본의 파일 변경 외에 `tests`, `scripts`, `brand`, `diagnostics.py`, 테스트 workflow도 포함해야 합니다.
-5. 선택 사항: GitHub Releases에서 태그 `v2.0.7`, 제목 `2.0.7 - HA 호환성 및 통신 개선`를 생성합니다. 태그는 수정 커밋을 가리켜야 합니다. 변경 설명은 CHANGELOG의 2.0.7 항목을 사용합니다.
+5. 선택 사항: GitHub Releases에서 태그 `v2.0.8`, 제목 `2.0.8 - HA 호환성 및 통신 개선`를 생성합니다. 태그는 수정 커밋을 가리켜야 합니다. 변경 설명은 CHANGELOG의 2.0.8 항목을 사용합니다.
 6. HACS → 사용자 지정 저장소에 자신의 저장소 URL을 넣고 유형을 Integration으로 지정합니다.
 7. 기존 원본과 domain이 같으므로 HACS에서 중복 관리하지 않습니다. HA의 기존 통합 설정 항목은 유지하고, 코드 다운로드 후 HA를 재시작합니다.
 
@@ -22,7 +22,7 @@ HACS는 release가 없는 저장소의 기본 브랜치도 설치할 수 있습�
 
 ## 검증 기록
 
-- Python 3.12: unittest 28개 통과.
+- Python 3.12: unittest 31개 통과.
 - Python 3.13 / HA 2025.2.2 및 Python 3.14 / HA 2026.10.2: 전체 모듈 import와 엔티티 테스트 통과.
 - 실제 HA EntityPlatform 사용: 8개 엔티티 등록, 상태 dispatcher 갱신, 연결 해제 후 unavailable, 플랫폼 정리 통과.
 - 실제 device registry의 게이트웨이 연결 및 serialx 가상 시리얼 송수신·재접속 통과.

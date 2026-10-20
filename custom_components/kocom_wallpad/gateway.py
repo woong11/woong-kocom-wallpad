@@ -197,7 +197,7 @@ class KocomGateway:
         return (not self._stopping and self.conn._is_connected()
                 and self._task_reader is not None and not self._task_reader.done()
                 and self._task_sender is not None and not self._task_sender.done()
-                and key.key in self._live_keys)
+                and self.registry.get(key) is not None)
 
     async def _read_loop(self) -> None:
         delay_min, delay_max = self.conn.reconnect_backoff
@@ -219,6 +219,7 @@ class KocomGateway:
                     LOGGER.info("Connection restored (generation %d)", self.conn.generation)
                     delay = delay_min
                     self.controller._rx_buf.clear()
+                    async_dispatcher_send(self.hass, self.async_signal_availability())
                 generation = self.conn.generation
                 try:
                     chunk = await self.conn.recv(512, 1.0)
@@ -236,7 +237,7 @@ class KocomGateway:
 
     async def async_send_action(self, key: DeviceKey, action: str, **kwargs) -> bool:
         if not self.is_available(key):
-            raise HomeAssistantError("Kocom device is not connected or has no fresh state")
+            raise HomeAssistantError("Kocom device is not connected or not registered")
         item = _CmdItem(key=key, action=action, kwargs=kwargs)
         try:
             self._tx_queue.put_nowait(item)
@@ -352,8 +353,51 @@ class KocomGateway:
                 except ValueError:
                     pass
 
+    async def _wait_for_idle(self, item: _CmdItem, generation: int) -> bool:
+        started = time.monotonic()
+        while not self.is_idle() and time.monotonic() - started < 1.0:
+            remaining = min(IDLE_GAP_SEC - self.conn.idle_since(),
+                            1.0 - (time.monotonic() - started))
+            await asyncio.sleep(max(0, remaining))
+            if item.future.done() or generation != self.conn.generation:
+                return False
+        return (not item.future.done() and not self._stopping
+                and self.conn._is_connected() and generation == self.conn.generation)
+
+    async def _refresh_switch_state(self, item: _CmdItem, generation: int) -> bool:
+        """Read the whole bank before changing a channel after reconnect."""
+        bank = (item.key.device_type, item.key.room_index)
+        if bank in self.controller._switch_payloads:
+            return True
+        valid_before = self._last_valid_rx
+        for _ in range(SEND_RETRY_MAX):
+            if not await self._wait_for_idle(item, generation):
+                return False
+            waiter = _PendingWaiter(item.key, lambda dev: True, asyncio.get_running_loop())
+            self._pendings.append(waiter)
+            try:
+                await self.conn.send(self.controller.generate_state_query(item.key))
+                self.stats["state_queries"] += 1
+                await asyncio.wait_for(waiter.future, 1.0)
+                if (generation == self.conn.generation and self.conn._is_connected()
+                        and bank in self.controller._switch_payloads):
+                    return True
+            except asyncio.TimeoutError:
+                self.stats["state_query_timeouts"] += 1
+            finally:
+                if waiter in self._pendings:
+                    self._pendings.remove(waiter)
+                if not waiter.future.done():
+                    waiter.future.cancel()
+        if valid_before == self._last_valid_rx:
+            self._connection_lost(generation)
+        return False
+
     async def _execute(self, item: _CmdItem) -> bool:
         generation = self.conn.generation
+        if item.key.device_type in (DeviceType.LIGHT, DeviceType.OUTLET):
+            if not await self._refresh_switch_state(item, generation):
+                return False
         # A call is not an idempotent setting: never auto-repeat an elevator call.
         retries = 1 if item.key.device_type == DeviceType.ELEVATOR else SEND_RETRY_MAX
         valid_before = self._last_valid_rx
@@ -362,14 +406,8 @@ class KocomGateway:
                 return False
             if generation != self.conn.generation:
                 return False
-            t0 = time.monotonic()
-            while not self.is_idle() and time.monotonic() - t0 < 1.0:
-                # Sleep until the current idle deadline, then recheck new traffic.
-                remaining = min(IDLE_GAP_SEC - self.conn.idle_since(),
-                                1.0 - (time.monotonic() - t0))
-                await asyncio.sleep(max(0, remaining))
-                if item.future.done() or generation != self.conn.generation:
-                    return False
+            if not await self._wait_for_idle(item, generation):
+                return False
             # Preserve upstream timing until actual RS485 bus timings are known.
             packet, predicate, timeout = self.controller.generate_command(
                 item.key, item.action, **item.kwargs
@@ -438,6 +476,8 @@ class KocomGateway:
             "generation": self.conn.generation,
             "reader_alive": self._task_reader is not None and not self._task_reader.done(),
             "sender_alive": self._task_sender is not None and not self._task_sender.done(),
+            "registered_devices": len(self.registry._states),
+            "fresh_devices": len(self._live_keys),
             "queue_size": self._tx_queue.qsize(),
             "pending_confirmations": len(self._pendings),
             "last_valid_rx_age": None if self._last_valid_rx is None else now - self._last_valid_rx,

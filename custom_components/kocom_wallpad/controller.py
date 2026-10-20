@@ -665,6 +665,14 @@ class KocomController:
         expect, timeout = self.build_expectation(key, action, **kwargs)
         return packet, expect, timeout
 
+    def generate_state_query(self, key: DeviceKey) -> bytes:
+        """Request a lighting/outlet bank snapshot without changing outputs."""
+        if key.device_type not in (DeviceType.LIGHT, DeviceType.OUTLET):
+            raise ValueError("State query only supports lighting and outlets")
+        body = bytes((0x30, 0xBC, 0, REV_DT_MAP[key.device_type],
+                      key.room_index, 0x01, 0, 0x3A)) + bytes(8)
+        return PACKET_PREFIX + body + bytes((self._checksum(body),)) + PACKET_SUFFIX
+
     def _generate_switch(self, key: DeviceKey, action: str, data: bytes) -> bytes:
         snapshot = self._switch_payloads.get((key.device_type, key.room_index))
         if snapshot is None:

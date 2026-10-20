@@ -85,6 +85,17 @@ async def main():
                     device = device_registry.async_get(hass).async_get(registered.device_id)
                     assert device.via_device_id == gateway.device_id
                     entities.append(entity)
+            # A quiet reconnect must restore every registered entity's UI state.
+            generation = gateway.conn.generation
+            gateway._connection_lost(generation)
+            await asyncio.sleep(0)
+            assert all(hass.states.get(e.entity_id).state == 'unavailable' for e in entities)
+            async with asyncio.timeout(4):
+                while gateway.conn.generation == generation:
+                    await asyncio.sleep(.01)
+            await asyncio.sleep(0)
+            assert not gateway._live_keys
+            assert all(hass.states.get(e.entity_id).state != 'unavailable' for e in entities)
             # Per-entity persistence must retain only relevant, detached hints.
             storage = gateway.controller._device_storage
             storage['5-1_0-0_thermo_target'] = 24.0
